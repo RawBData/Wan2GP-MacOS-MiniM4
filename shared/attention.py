@@ -6,8 +6,12 @@ import torch.nn.functional as F
 import warnings
 from importlib.metadata import version
 
-major, minor = torch.cuda.get_device_capability(None)
-bfloat16_supported =  major >= 8 
+if torch.cuda.is_available():
+    major, minor = torch.cuda.get_device_capability(None)
+    bfloat16_supported =  major >= 8 
+else:
+    major, minor = 0, 0
+    bfloat16_supported = False
 
 try:
     import triton
@@ -199,7 +203,10 @@ def get_attention_modes():
 
 def get_supported_attention_modes():
     ret = get_attention_modes()
-    major, minor = torch.cuda.get_device_capability()
+    if torch.cuda.is_available():
+        major, minor = torch.cuda.get_device_capability()
+    else:
+        major, minor = 0, 0
     if  major < 10 or not triton_installed:
         if "sage3" in ret:
             ret.remove("sage3")

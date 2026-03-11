@@ -2280,7 +2280,10 @@ attention_modes_supported = get_supported_attention_modes()
 args = _parse_args()
 migrate_loras_layout()
 
-gpu_major, gpu_minor = torch.cuda.get_device_capability(args.gpu if len(args.gpu) > 0 else None)
+if torch.cuda.is_available():
+    gpu_major, gpu_minor = torch.cuda.get_device_capability(args.gpu if len(args.gpu) > 0 else None)
+else:
+    gpu_major, gpu_minor = 0, 0
 if  gpu_major < 8:
     print("Switching to FP16 models when possible as GPU architecture doesn't support optimed BF16 Kernels")
     bfloat16_supported = False
@@ -4787,7 +4790,8 @@ def extract_faces_from_video_with_mask(input_video_path, input_mask_path, max_fr
 
     face_processor = None
     gc.collect()
-    torch.cuda.empty_cache()
+    if torch.cuda.is_available(): torch.cuda.empty_cache()
+    elif torch.backends.mps.is_available(): torch.mps.empty_cache()
 
     face_tensor= torch.tensor(np.stack(face_list, dtype= np.float32) / 127.5 - 1).permute(-1, 0, 1, 2 ) # t h w c -> c t h w
     if pad_frames > 0:
@@ -5201,7 +5205,7 @@ def set_seed(seed):
     import random
     seed = random.randint(0, 999999999) if seed == None or seed < 0 else seed
     torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    if torch.cuda.is_available(): torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     random.seed(seed)
     torch.backends.cudnn.deterministic = True
@@ -5941,7 +5945,11 @@ def generate_video(
         perturbation_layers = None
 
     offload.shared_state["_attention"] =  attn
-    device_mem_capacity = torch.cuda.get_device_properties(0).total_memory / 1048576
+    if torch.cuda.is_available():
+        device_mem_capacity = torch.cuda.get_device_properties(0).total_memory / 1048576
+    else:
+        import psutil
+        device_mem_capacity = psutil.virtual_memory().total / 1048576
     if  hasattr(wan_model, "vae") and hasattr(wan_model.vae, "get_VAE_tile_size"):
         get_tile_size = wan_model.vae.get_VAE_tile_size
         try:
@@ -6039,7 +6047,11 @@ def generate_video(
 
     current_video_length = video_length
     # VAE Tiling
-    device_mem_capacity = torch.cuda.get_device_properties(None).total_memory / 1048576
+    if torch.cuda.is_available():
+        device_mem_capacity = torch.cuda.get_device_properties(None).total_memory / 1048576
+    else:
+        import psutil
+        device_mem_capacity = psutil.virtual_memory().total / 1048576
     guide_inpaint_color = model_def.get("guide_inpaint_color", 127.5)
     if image_mode==2:
         guide_inpaint_color = model_def.get("inpaint_color", guide_inpaint_color)
@@ -7292,7 +7304,7 @@ def process_tasks(state):
                     current_model_type = queue[0]["params"].get("model_type")
             
             try:
-                torch.cuda.current_stream().synchronize()
+                if torch.cuda.is_available(): torch.cuda.current_stream().synchronize()
                 preview = None if data is None else generate_preview(current_model_type, data) 
                 gen["preview"] = preview
                 yield time.time(), gr.Text(), gr.update()
